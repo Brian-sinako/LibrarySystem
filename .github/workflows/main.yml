@@ -1,40 +1,66 @@
-
-name: Publish 🚀
+name: CI/CD Pipeline
 
 on:
-  workflow_dispatch:
   push:
     branches:
-    - main
-
-env:
-  AZURE_WEBAPP_NAME: current-time-service
-  AZURE_WEBAPP_PACKAGE_PATH: "./publish"
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
         with:
-          dotnet-version: '6.0.x'
-          
-      - name: Restore
-        run: dotnet restore ./CurrentTimeService.sln
-        
-      - name: Build
-        run: dotnet build ./CurrentTimeService.sln --configuration Release --no-restore
-        
-      - name: Publish
-        run: dotnet publish ./CurrentTimeService.sln --configuration Release --no-build --output '${{ env.AZURE_WEBAPP_PACKAGE_PATH }}'
-        
-      - name: Deployment
-        uses: azure/webapps-deploy@v2
+          node-version: '14'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build application
+        run: npm run build
+
+      - name: Archive production artifacts
+        run: zip -r build.zip build/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE }}
-          package: "${{ env.AZURE_WEBAPP_PACKAGE_PATH }}"
+          node-version: '14'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Code quality checks
+        run: |
+          npm run lint
+          npm run test -- --coverage
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Deploy to Staging
+        run: |
+          # Assuming you have an AWS CLI or similar tool set up
+          aws s3 cp build.zip s3://your-staging-bucket/
+          echo "Application deployed to staging!"
